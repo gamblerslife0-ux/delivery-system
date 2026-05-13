@@ -1,5 +1,5 @@
 const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
+const Database = require("better-sqlite3");
 const cors = require("cors");
 const puppeteer = require("puppeteer");
 const QRCode = require("qrcode");
@@ -11,7 +11,7 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "../frontend")));
 
-const db = new sqlite3.Database("data.db");
+const db = new Database("data.db");
 
 // ===== CREATE TABLE =====
 db.run(`
