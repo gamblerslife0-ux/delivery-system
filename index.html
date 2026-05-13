@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<title>Δελτία Αποστολής Αγροτών</title>
+<style>
+html, body {
+  margin:0;
+  padding:0;
+  height:100%;
+  font-family: Arial, sans-serif;
+}
+
+/* Κρατάμε την εικόνα σε ξεχωριστό div */
+.background-container {
+  position: fixed;
+  top:0;
+  left:0;
+  width:100%;
+  height:100%;
+  background: url('background.jpg') no-repeat center 10%; /* <-- κατεβάσαμε την εικόνα */
+  background-size: cover;
+  z-index:0;
+}
+
+/* Όλο το υπόλοιπο περιεχόμενο πάνω από την εικόνα */
+.content {
+  position: relative;
+  z-index: 1;
+  padding:20px;
+}
+
+/* Header */
+.header {
+  position: relative;
+  height:120px;
+  margin-bottom:20px;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  font-size:28px;
+  font-weight:bold;
+  color:white;
+  text-shadow:2px 2px 4px rgba(0,0,0,0.8);
+}
+
+.header button {
+  position:absolute;
+  right:20px;
+  padding:8px 12px;
+  font-size:14px;
+  border:none;
+  border-radius:6px;
+  background:#2563eb;
+  color:white;
+  cursor:pointer;
+}
+
+/* Form */
+.form {
+  background: rgba(255,255,255,0.9);
+  padding:15px;
+  border-radius:12px;
+  margin-bottom:20px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  width:250px;
+  margin:auto;
+}
+
+input {
+  padding:8px;
+  border:1px solid #ddd;
+  border-radius:8px;
+  font-size:14px;
+  outline:none;
+}
+
+button {
+  padding:8px 12px;
+  border:none;
+  border-radius:8px;
+  background:#2563eb;
+  color:white;
+  cursor:pointer;
+  font-size:14px;
+}
+
+button:hover {
+  background:#1e40af;
+}
+
+/* Δελτία */
+.card {
+  background: rgba(255,255,255,0.95);
+  padding:15px;
+  border-radius:12px;
+  margin-bottom:10px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+
+.info {
+  line-height:1.5;
+}
+
+.small {
+  color:gray;
+  font-size:13px;
+}
+</style>
+</head>
+<body>
+
+<div class="background-container"></div>
+
+<div class="content">
+  <div class="header">
+
+    <button onclick="connectAADE()">Σύνδεση ΑΑΔΕ</button>
+  </div>
+
+  <div class="form">
+    <input id="customer" placeholder="Πελάτης">
+    <input id="product" placeholder="Προϊόν">
+    <input id="qty" placeholder="Ποσότητα">
+    <button onclick="createDoc()">Δημιουργία Δελτίου</button>
+  </div>
+
+  <div id="list"></div>
+</div>
+
+<script>
+async function load(){
+  const user_id = document.getElementById("user_id").value || "default";
+  const res = await fetch(`/docs/${user_id}`);
+  const data = await res.json();
+  const list = document.getElementById("list");
+  list.innerHTML="";
+  data.forEach(d=>{
+    list.innerHTML+=`
+      <div class="card">
+        <div class="info">
+          <b>#${d.id}</b><br>
+          ${d.customer} — ${d.product}<br>
+          <span class="small">${d.qty} τεμάχια | ${new Date(d.created_at).toLocaleString()}</span>
+        </div>
+        <button onclick="window.open('/pdf/${d.id}')">PDF</button>
+      </div>
+    `;
+  });
+}
+
+async function createDoc(){
+  const user_id=document.getElementById("user_id").value || "default";
+  const customer=document.getElementById("customer").value;
+  const product=document.getElementById("product").value;
+  const qty=document.getElementById("qty").value;
+
+  if(!customer || !product || !qty){
+    alert("Συμπλήρωσε όλα τα πεδία!");
+    return;
+  }
+
+  await fetch("/doc", {
+    method:"POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id, customer, product, qty })
+  });
+
+  document.getElementById("customer").value="";
+  document.getElementById("product").value="";
+  document.getElementById("qty").value="";
+  load();
+}
+
+function connectAADE(){ alert("Σύνδεση με ΑΑΔΕ (demo)"); }
+
+window.onload = load;
+</script>
+
+</body>
+</html>
