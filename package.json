@@ -5,8 +5,7 @@
     "express": "^5.2.1",
     "pdfkit": "^0.18.0",
     "puppeteer": "^24.43.1",
-    "qrcode": "^1.5.4",
-    "sqlite3": "^6.0.1"
+    "qrcode": "^1.5.4"
   },
   "name": "backend",
   "version": "1.0.0",
