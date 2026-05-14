@@ -1,7 +1,6 @@
 const express = require("express");
 const { Pool } = require("pg");
 const cors = require("cors");
-const puppeteer = require("puppeteer");
 const QRCode = require("qrcode");
 const path = require("path");
 
@@ -11,79 +10,70 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "../frontend")));
 
+// ===== POSTGRES (SUPABASE) =====
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
 
 // ===== CREATE TABLE =====
-db.run(`
+pool.query(`
 CREATE TABLE IF NOT EXISTS docs (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id SERIAL PRIMARY KEY,
   customer TEXT,
   product TEXT,
   qty TEXT,
   created_at TEXT
-)
+);
 `);
 
 // ===== CREATE DOC =====
-app.post("/doc", (req, res) => {
+app.post("/doc", async (req, res) => {
   const { customer, product, qty } = req.body;
-
-  // store ISO in DB (correct way)
   const created_at = new Date().toISOString();
 
-  db.run(
-    "INSERT INTO docs (customer, product, qty, created_at) VALUES (?, ?, ?, ?)",
-    [customer, product, qty, created_at],
-    function (err) {
-      if (err) {
-        console.log(err);
-        return res.status(500).send("DATABASE ERROR");
-      }
+  try {
+    const result = await pool.query(
+      "INSERT INTO docs (customer, product, qty, created_at) VALUES ($1, $2, $3, $4) RETURNING id",
+      [customer, product, qty, created_at]
+    );
 
-      res.json({ id: this.lastID });
-    }
-  );
+    res.json({ id: result.rows[0].id });
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("DATABASE ERROR");
+  }
 });
 
 // ===== GET ALL DOCS =====
-app.get("/docs/default", (req, res) => {
-  db.all("SELECT * FROM docs ORDER BY id DESC", [], (err, rows) => {
-    if (err) {
-      return res.status(500).send(err.message);
-    }
-
-    res.json(rows);
-  });
+app.get("/docs/default", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM docs ORDER BY id DESC");
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).send(err.message);
+  }
 });
 
-// ===== FORMAT DATE (CLEAN + NICE) =====
+// ===== FORMAT DATE =====
 function formatDate(dateString) {
   const d = new Date(dateString);
 
-  const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-
-  const date = `${String(d.getDate()).padStart(2, "0")}/` +
-               `${String(d.getMonth() + 1).padStart(2, "0")}/` +
-               `${d.getFullYear()}`;
-
-  return `${time} | ${date}`;
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")} | ${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 }
 
-// ===== PDF =====
+// ===== PDF (κρατάμε puppeteer όπως είναι) =====
+const puppeteer = require("puppeteer");
+
 app.get("/pdf/:id", async (req, res) => {
-  const id = req.params.id;
+  try {
+    const result = await pool.query("SELECT * FROM docs WHERE id = $1", [req.params.id]);
 
-  db.get("SELECT * FROM docs WHERE id = ?", [id], async (err, row) => {
-    if (err) {
-      return res.status(500).send("DATABASE ERROR");
-    }
-
-    if (!row) {
+    if (!result.rows.length) {
       return res.status(404).send("NOT FOUND");
     }
+
+    const row = result.rows[0];
 
     const qrData = `
 Πελάτης: ${row.customer}
@@ -95,119 +85,36 @@ app.get("/pdf/:id", async (req, res) => {
     const qrCodeImage = await QRCode.toDataURL(qrData);
 
     const html = `
-<html>
-<head>
-<meta charset="UTF-8">
-
-<style>
-  body {
-    font-family: Arial;
-    padding: 40px;
-    background: #fff;
-  }
-
-  .container {
-    border: 1px solid #000;
-    border-radius: 12px;
-    width: 420px;
-    margin: auto;
-    padding: 20px;
-  }
-
-  h1 {
-    text-align: center;
-    margin-bottom: 25px;
-    font-size: 26px;
-  }
-
-  .field-box {
-    border-bottom: 1px dashed #333;
-    padding: 10px 0;
-    text-align: center;
-    font-size: 15px;
-  }
-
-  .field-box span {
-    font-weight: bold;
-  }
-
-  .qr {
-    display: block;
-    margin: 25px auto;
-    width: 110px;
-  }
-
-  .footer {
-    text-align: center;
-    font-size: 12px;
-    color: gray;
-    margin-top: 15px;
-  }
-</style>
-
-</head>
-
-<body>
-  <div class="container">
-
-    <h1>Δελτίο Αποστολής Αγροτών</h1>
-
-    <div class="field-box">
-      <span>ID:</span> ${row.id}
-    </div>
-
-    <div class="field-box">
-      <span>Ημερομηνία & Ώρα:</span> ${formatDate(row.created_at)}
-    </div>
-
-    <div class="field-box">
-      <span>Πελάτης:</span> ${row.customer}
-    </div>
-
-    <div class="field-box">
-      <span>Προϊόν:</span> ${row.product}
-    </div>
-
-    <div class="field-box">
-      <span>Ποσότητα:</span> ${row.qty}
-    </div>
-
-    <img class="qr" src="${qrCodeImage}" />
-
-    <div class="footer">
-      Δελτίο Αποστολής Αγροτών
-    </div>
-
-  </div>
-</body>
-</html>
+<html><body>
+<h1>Δελτίο Αποστολής</h1>
+<p>${row.customer}</p>
+<p>${row.product}</p>
+<p>${row.qty}</p>
+<img src="${qrCodeImage}" />
+</body></html>
 `;
 
-    try {
-      const browser = await puppeteer.launch({
-        headless: "new",
-        args: ["--no-sandbox", "--disable-setuid-sandbox"]
-      });
+    const browser = await puppeteer.launch({
+      headless: "new",
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
+    });
 
-      const page = await browser.newPage();
+    const page = await browser.newPage();
+    await page.setContent(html);
+    const pdf = await page.pdf({ format: "A4" });
 
-      await page.setContent(html, { waitUntil: "networkidle0" });
+    await browser.close();
 
-      const pdf = await page.pdf({ format: "A4" });
+    res.setHeader("Content-Type", "application/pdf");
+    res.send(pdf);
 
-      await browser.close();
-
-      res.setHeader("Content-Type", "application/pdf");
-      res.send(pdf);
-
-    } catch (e) {
-      console.log("PDF ERROR:", e);
-      res.status(500).send("PDF ERROR");
-    }
-  });
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("PDF ERROR");
+  }
 });
 
-// ===== START SERVER =====
+// ===== START =====
 app.listen(3000, () => {
   console.log("Server running on http://localhost:3000");
 });
