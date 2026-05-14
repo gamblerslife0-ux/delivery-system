@@ -1,5 +1,5 @@
 const express = require("express");
-const sqlite3 = require("sqlite3").verbose();
+const { Pool } = require("pg");
 const cors = require("cors");
 const puppeteer = require("puppeteer");
 const QRCode = require("qrcode");
@@ -11,7 +11,10 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "../frontend")));
 
-const db = new sqlite3.Database("data.db");
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
 
 // ===== CREATE TABLE =====
 db.run(`
